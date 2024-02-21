@@ -4,7 +4,7 @@ import math
 import numpy as np
 import cv2
 from PIL import Image, ImageDraw, ImageFont
-from cprint import cprint
+from .cprint import cprint
 
 #region 获取参数解析器
 def get_parser():

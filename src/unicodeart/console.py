@@ -1,13 +1,12 @@
 import os
 import cv2
-import unicodeart
-import global_vars
-from cprint import cprint
+from . import unicodeart_util
+from . import global_vars
+from .cprint import cprint
 
-if __name__ == "__main__":
-
+def console():
     #region 定义参数解析器对象p并初始化
-    p=unicodeart.get_parser()
+    p=unicodeart_util.get_parser()
     #endregion
 
     #region 解析命令行参数
@@ -80,27 +79,30 @@ if __name__ == "__main__":
     if image_file is not None:
         baseimg = image_file
     else:
-        baseimg = unicodeart.get_baseimg(text_string, art_font, height, matrix_size)
+        baseimg = unicodeart_util.get_baseimg(text_string, art_font, height, matrix_size)
     # 如果设置了反转选项，反转图像颜色（变为黑底效果）
     if invert is True:
         baseimg = cv2.bitwise_not(baseimg)
     #endregion
 
     #region 根据操作台图像生成采样数组        
-    sampling_array=unicodeart.get_sampling_array(baseimg, height, width, vertical_horizontal_ratio, matrix_size)
+    sampling_array=unicodeart_util.get_sampling_array(baseimg, height, width, vertical_horizontal_ratio, matrix_size)
     #endregion
 
     #region 根据字符集参数准备好字符数组
     #todo3 暂用art_font用作字符字体，后期增加单独字符字体参数
-    char_data, wide_char_data=unicodeart.get_char_data(chars, art_font, matrix_size, vertical_horizontal_ratio)
+    char_data, wide_char_data=unicodeart_util.get_char_data(chars, art_font, matrix_size, vertical_horizontal_ratio)
     #endregion
         
     #region 生成最终输出的字符串
-    final_output = unicodeart.get_final_output(sampling_array, char_data, wide_char_data, output_path)
+    final_output = unicodeart_util.get_final_output(sampling_array, char_data, wide_char_data, output_path)
     cprint(final_output,1)
     #endregion
 
-    #python main.py -o output.txt -t "黑白あき123ABab" --font "C:\Windows\Fonts\SimSun.ttc" --height 20
-        
+
+if __name__ == "__main__":
+    print('sdsd')
+    console()     
+    #python console.py -o output.txt -t "黑白あき123ABab" --font "C:\Windows\Fonts\SimSun.ttc" --height 20
 
     

@@ -1,4 +1,4 @@
-import global_vars
+from . import global_vars
 
 def cprint(string, force_capture=0):    
     """

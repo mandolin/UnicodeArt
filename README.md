@@ -4,10 +4,9 @@
 
 主要功能为：根据输入的文本或图片生成相应的字符画。
 
-
 ## 使用方法
 
-`python3 main.py [-h] [-c CONFIG] (-i IMAGE | -t TEXT) [-a CHARS] [-o OUTPUT] [-e HEIGHT] [-w WIDTH] [-f FONT] [-r RATIO] [-v] [-m MATRIX] [-p PRINT]`
+`python src/unicodeart/console.py [-h] [-c CONFIG] (-i IMAGE | -t TEXT) [-a CHARS] [-o OUTPUT] [-e HEIGHT] [-w WIDTH] [-f FONT] [-r RATIO] [-v] [-m MATRIX] [-p PRINT]`
 
 ```cmd
 options:
@@ -37,4 +36,4 @@ options:
 
 ## 示例
 
-`python3 main.py -o output.txt -t "黑白あき123ABab" --font "C:\Windows\Fonts\SimSun.ttc" --height 20`
+`python src/unicodeart/console.py -o output.txt -t "黑白あき123ABab" --font "C:\Windows\Fonts\SimSun.ttc" --height 20`
