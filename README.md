@@ -6,7 +6,7 @@
 
 ## 使用方法
 
-`python src/unicodeart/console.py [-h] [-c CONFIG] (-i IMAGE | -t TEXT) [-a CHARS] [-o OUTPUT] [-e HEIGHT] [-w WIDTH] [-f FONT] [-r RATIO] [-v] [-m MATRIX] [-p PRINT]`
+`python unicodeart.py [-h] [-c CONFIG] (-i IMAGE | -t TEXT) [-a CHARS] [-o OUTPUT] [-e HEIGHT] [-w WIDTH] [-f FONT] [-r RATIO] [-v] [-m MATRIX] [-p PRINT]`
 
 ```cmd
 options:
@@ -32,8 +32,10 @@ options:
                         用于采样的矩阵大小
   -p PRINT, --print PRINT
                         执行print(all:全部，为默认值；spec:指定，用于外部调用；no:不执行print输出)
+  -d DEBUG, --debug DEBUG
+                        调试模式下的标签指定(逗号分隔的字符串默认为空)
 ```
 
 ## 示例
 
-`python src/unicodeart/console.py -o output.txt -t "黑白あき123ABab" --font "C:\Windows\Fonts\SimSun.ttc" --height 20`
+`python unicodeart.py -o output.txt -t "黑白あき123ABab" --font "C:\Windows\Fonts\SimSun.ttc" --height 20`
