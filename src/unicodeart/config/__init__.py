@@ -19,6 +19,10 @@ from .constants import (
     INTERPOLATION_MAP,
     DEFAULT_INTERPOLATION,
     
+    # 字体样式
+    FONT_STYLE_SUFFIX,
+    WINDOWS_FONT_DIR,
+    
     # 日志配置
     DEFAULT_LOG_LEVEL,
 )
@@ -34,5 +38,7 @@ __all__ = [
     'WIDE_CHAR_PATTERN',
     'INTERPOLATION_MAP',
     'DEFAULT_INTERPOLATION',
+    'FONT_STYLE_SUFFIX',
+    'WINDOWS_FONT_DIR',
     'DEFAULT_LOG_LEVEL',
 ]

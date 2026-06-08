@@ -52,6 +52,9 @@ def console():
     height                    = args.height       # 字符画图像高度
     width                     = args.width        # 字符画图像宽度
     art_font                  = args.font         # 字符画图像字体
+    font_style                = args.font_style   # 字体样式 (regular/bold/italic/bold-italic)
+    wide_char_ratio           = args.wide_char_ratio  # 宽字符匹配得分权重比例
+    interpolation             = args.interpolation    # 图像 resize 插值算法
     invert                    = args.invert       # 是否反转显示
     print_option              = args.print        # print选项设定
     debug_tags                = args.debug        # debug标签设定
@@ -62,6 +65,7 @@ def console():
     text_align                = args.text_align   # 文本对齐方式
     line_spacing              = args.line_spacing # 字符画行间距
     height_mode               = args.height_mode  # 高度模式 ('line' 或 'total')
+    fontreduce                = args.font_reduce  # 字体大小缩减量
 
     #endregion
 
@@ -127,7 +131,9 @@ def console():
     if image_file is not None:
         baseimg = image_file
     else:
-        baseimg = unicodeart_util.get_baseimg(text_string, art_font, height, matrix_size, text_align, line_spacing, height_mode)
+        # 应用字体样式查找
+        actual_font = unicodeart_util.load_font_with_style(art_font, font_style)
+        baseimg = unicodeart_util.get_baseimg(text_string, actual_font, height, matrix_size, text_align, line_spacing, height_mode, fontreduce)
     # 如果设置了反转选项，反转图像颜色（变为黑底效果）
     if invert is True:
         baseimg = cv2.bitwise_not(baseimg)
@@ -148,15 +154,16 @@ def console():
         actual_sampling_height = text_lines_height + spacing_lines_height
     
     #region ㈣ 根据操作台图像生成采样数组        
-    sampling_array = unicodeart_util.get_sampling_array(baseimg, actual_sampling_height, width, vertical_horizontal_ratio, matrix_size)
+    sampling_array = unicodeart_util.get_sampling_array(baseimg, actual_sampling_height, width, vertical_horizontal_ratio, matrix_size, interpolation)
     #endregion
 
     #region ㈤ 根据字符集参数准备好采样字符数组
     #todo3 暂用art_font用作字符字体，后期增加单独字符字体参数
-    char_data, wide_char_data=unicodeart_util.get_char_data(chars, art_font, matrix_size, vertical_horizontal_ratio)
+    actual_char_font = unicodeart_util.load_font_with_style(art_font, font_style)
+    char_data, wide_char_data=unicodeart_util.get_char_data(chars, actual_char_font, matrix_size, vertical_horizontal_ratio, interpolation)
     #endregion
         
     #region ㈥ 通过对采样字符数组和操作台图像采样数组进行比对，生成最终输出的字符串
-    final_output = unicodeart_util.get_final_output(sampling_array, char_data, wide_char_data, output_path)
+    final_output = unicodeart_util.get_final_output(sampling_array, char_data, wide_char_data, output_path, wide_char_ratio)
     cprint(final_output,1)
     #endregion

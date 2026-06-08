@@ -53,6 +53,21 @@ DEFAULT_INTERPOLATION = 'bilinear'
 
 #endregion
 
+#region 🟦 字体样式映射
+
+# Windows 字体样式后缀映射 (针对常见字体)
+FONT_STYLE_SUFFIX = {
+    'regular': '',
+    'bold': ',Bold',
+    'italic': ',Italic',
+    'bold-italic': ',Bold Italic'
+}
+
+# Windows 系统字体目录
+WINDOWS_FONT_DIR = r'C:\Windows\Fonts'
+
+#endregion
+
 #region 🟦 日志配置
 
 # 默认日志级别

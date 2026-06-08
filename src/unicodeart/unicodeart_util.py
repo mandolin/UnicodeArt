@@ -17,9 +17,83 @@ from .config import (
     WIDE_CHAR_PATTERN,
     INTERPOLATION_MAP,
     DEFAULT_INTERPOLATION,
+    FONT_STYLE_SUFFIX,
+    WINDOWS_FONT_DIR,
 )
 
 #todo1 更新python官方仓库版本
+
+#region 🟦 字体加载辅助函数
+
+def load_font_with_style(font_path, font_style='regular'):
+    """
+    根据字体路径和样式加载字体文件
+    
+    Args:
+        font_path: 字体文件路径或字体名称
+        font_style: 字体样式 ('regular', 'bold', 'italic', 'bold-italic')
+    
+    Returns:
+        str: 实际使用的字体文件路径
+    
+    Note:
+        查找策略 (按优先级):
+        1. 如果 font_path 包含路径分隔符,直接使用
+        2. 当前目录查找
+        3. 程序目录查找
+        4. Windows 字体目录查找
+        5. 找不到时回退到原始路径 + 警告
+    """
+    import sys
+    from pathlib import Path
+    
+    # 如果已经是完整路径,直接返回
+    if os.path.isabs(font_path) or '/' in font_path or '\\' in font_path:
+        return font_path
+    
+    # 获取字体文件名和扩展名
+    font_name = os.path.splitext(font_path)[0]
+    font_ext = os.path.splitext(font_path)[1] or '.ttf'
+    
+    # 根据样式添加后缀
+    style_suffix = FONT_STYLE_SUFFIX.get(font_style, '')
+    
+    # 构建带样式的字体文件名
+    styled_font_name = f"{font_name}{style_suffix}{font_ext}"
+    
+    # 查找策略 1: 当前目录
+    current_dir = Path('.')
+    styled_font_path = current_dir / styled_font_name
+    if styled_font_path.exists():
+        cprint(f"✅ 找到字体 (当前目录): {styled_font_path}")
+        return str(styled_font_path)
+    
+    # 查找策略 2: 程序目录
+    program_dir = Path(sys.argv[0]).parent
+    styled_font_path = program_dir / styled_font_name
+    if styled_font_path.exists():
+        cprint(f"✅ 找到字体 (程序目录): {styled_font_path}")
+        return str(styled_font_path)
+    
+    # 查找策略 3: Windows 字体目录
+    windows_fonts = Path(WINDOWS_FONT_DIR)
+    if windows_fonts.exists():
+        styled_font_path = windows_fonts / styled_font_name
+        if styled_font_path.exists():
+            cprint(f"✅ 找到字体 (Windows目录): {styled_font_path}")
+            return str(styled_font_path)
+    
+    # 未找到带样式的字体,尝试原始字体名
+    original_font_path = Path(font_path)
+    if original_font_path.exists():
+        cprint(f"⚠️  警告: 未找到 {font_style} 样式字体 '{styled_font_name}',使用原始字体 '{font_path}'")
+        return font_path
+    
+    # 完全找不到,返回原始路径 (让 ImageFont.truetype 报错)
+    cprint(f"⚠️  警告: 字体文件不存在: '{font_path}' (样式: {font_style})")
+    return font_path
+
+#endregion
 
 #region 🟦获取参数解析器
 def get_parser():
@@ -62,6 +136,22 @@ def get_parser():
     # 🔶🟢 高度模式参数
     p.add_argument('--height-mode', choices=['line', 'total'], default='line',
                    help='高度模式: line=每行字符画高度(默认), total=整体字符画总高度')
+    
+    # 🔶🟢 字体缩减参数 (todo2 #4)
+    p.add_argument('--font-reduce', type=int, default=DEFAULT_FONT_REDUCE,
+                   help=f'字体大小缩减量 (默认: {DEFAULT_FONT_REDUCE}, 单位: 像素)')
+    
+    # 🔶🟢 字体样式参数 (todo2 - 任务 1.2.3)
+    p.add_argument('--font-style', choices=['regular', 'bold', 'italic', 'bold-italic'], default='regular',
+                   help='字体样式 (默认: regular)')
+    
+    # 🔶🟢 宽字符比例参数 (todo3 #13 - 任务 1.2.6)
+    p.add_argument('--wide-char-ratio', type=float, default=DEFAULT_WIDE_CHAR_RATIO,
+                   help=f'宽字符匹配得分权重比例 (默认: {DEFAULT_WIDE_CHAR_RATIO})')
+    
+    # 🔶🟢 插值算法参数 (todo3 #7 - 任务 1.2.5)
+    p.add_argument('--interpolation', choices=['nearest', 'bilinear', 'bicubic', 'lanczos'], default=DEFAULT_INTERPOLATION,
+                   help=f'图像 resize 插值算法 (默认: {DEFAULT_INTERPOLATION})')
     
     # todo3 增加字符字体
     # todo2 增加字体类型（粗体、斜体等）
@@ -129,7 +219,7 @@ def preprocess_text_input(text_string):
 #region 🟦 操作台基准图像相关函数
 
 # 🔶 生成操作台基准图像 (支持多行文本和高度模式)
-def get_baseimg(text_string, art_font, height, matrix_size, text_align='left', line_spacing=0, height_mode='line'):
+def get_baseimg(text_string, art_font, height, matrix_size, text_align='left', line_spacing=0, height_mode='line', fontreduce=None):
     """
     获取图像对象 (支持多行文本和高度模式)
     
@@ -141,6 +231,7 @@ def get_baseimg(text_string, art_font, height, matrix_size, text_align='left', l
         text_align  : 文本对齐方式 ('left', 'center', 'right')
         line_spacing: 字符画行间距 (对应输入文本行的视觉块之间的空行数,单位:字符画行数)
         height_mode : 高度模式 ('line'=每行高度, 'total'=整体总高度)
+        fontreduce  : 字体大小缩减量 (默认: DEFAULT_FONT_REDUCE)
     
     Returns:
         Image: 图像对象
@@ -150,8 +241,9 @@ def get_baseimg(text_string, art_font, height, matrix_size, text_align='left', l
     lines = preprocess_text_input(text_string)
     num_lines = len(lines)
     
-    # 🟢 绘字时边缘预留空白尺寸
-    fontreduce = DEFAULT_FONT_REDUCE
+    # 🟢 使用传入的 fontreduce 或默认值
+    if fontreduce is None:
+        fontreduce = DEFAULT_FONT_REDUCE
     
     # 🟢 根据高度模式计算整体图像高度
     if height_mode == 'total':
@@ -382,7 +474,8 @@ def _extract_and_sample_block(
     start_x: int,
     block_h: int,
     block_w: int,
-    matrix_size: int
+    matrix_size: int,
+    interpolation: str = DEFAULT_INTERPOLATION
 ) -> np.ndarray:
     """
     从源图像中提取一个块并进行缩放采样
@@ -394,6 +487,7 @@ def _extract_and_sample_block(
         block_h: 块高度
         block_w: 块宽度
         matrix_size: 目标矩阵尺寸
+        interpolation: 插值算法 ('nearest', 'bilinear', 'bicubic', 'lanczos')
     
     Returns:
         np.ndarray: 缩放后的归一化矩阵 (matrix_size x matrix_size)
@@ -411,15 +505,25 @@ def _extract_and_sample_block(
     # 将矩形块的数据复制到全白图像中，实现裁剪填充
     padded_crop[:crop_region.shape[0], :crop_region.shape[1]] = crop_region
     
+    # 映射插值算法名称到 OpenCV 常量
+    interp_code = INTERPOLATION_MAP.get(interpolation, cv2.INTER_LINEAR)
+    
     # 调整裁剪后的矩形块大小为 matrix_size x matrix_size
-    resized = cv2.resize(padded_crop, dsize=(matrix_size, matrix_size), interpolation=cv2.INTER_CUBIC)
+    resized = cv2.resize(padded_crop, dsize=(matrix_size, matrix_size), interpolation=interp_code)
     
     return resized
 
 #endregion
 
 #region 🟦 生成采样数组
-def get_sampling_array(baseimg: np.ndarray, height, width, vertical_horizontal_ratio=DEFAULT_VERTICAL_HORIZONTAL_RATIO, matrix_size=DEFAULT_MATRIX_SIZE):
+def get_sampling_array(
+    baseimg: np.ndarray,
+    height: int = None,
+    width: int = None,
+    vertical_horizontal_ratio: float = DEFAULT_VERTICAL_HORIZONTAL_RATIO,
+    matrix_size: int = DEFAULT_MATRIX_SIZE,
+    interpolation: str = DEFAULT_INTERPOLATION
+) -> np.ndarray:
     """
     生成采样数组
 
@@ -429,6 +533,7 @@ def get_sampling_array(baseimg: np.ndarray, height, width, vertical_horizontal_r
         width (int)                              : 输出字符画图像的宽度
         vertical_horizontal_ratio (int, optional): 水平和垂直比例，默认为2
         matrix_size (int, optional)              : 矩阵大小，默认为5
+        interpolation (str, optional)            : 插值算法,默认为 bilinear
 
     Returns:
         np.ndarray: 采样数组
@@ -458,7 +563,7 @@ def get_sampling_array(baseimg: np.ndarray, height, width, vertical_horizontal_r
             # 提取并采样单个图像块
             block = _extract_and_sample_block(
                 baseimg, actual_y, actual_x, 
-                rectsize_h, rectsize_w, matrix_size
+                rectsize_h, rectsize_w, matrix_size, interpolation
             )
             
             # 存储到采样数组
@@ -517,7 +622,8 @@ def _render_char_to_matrix(
     font: ImageFont.FreeTypeFont,
     matrix_size: int,
     is_wide: bool = False,
-    vertical_horizontal_ratio: float = DEFAULT_VERTICAL_HORIZONTAL_RATIO
+    vertical_horizontal_ratio: float = DEFAULT_VERTICAL_HORIZONTAL_RATIO,
+    interpolation: str = DEFAULT_INTERPOLATION
 ) -> np.ndarray:
     """
     将字符渲染到画布并转换为归一化矩阵
@@ -529,6 +635,7 @@ def _render_char_to_matrix(
         matrix_size: 目标矩阵尺寸
         is_wide: 是否为宽字符
         vertical_horizontal_ratio: 垂直水平比例
+        interpolation: 插值算法 ('nearest', 'bilinear', 'bicubic', 'lanczos')
     
     Returns:
         np.ndarray: 归一化到 [0, 1] 的灰度矩阵
@@ -547,8 +654,11 @@ def _render_char_to_matrix(
         target_size = (matrix_size, matrix_size)
         canvas_width = round(matrix_size / vertical_horizontal_ratio)
     
+    # 映射插值算法名称到 OpenCV 常量
+    interp_code = INTERPOLATION_MAP.get(interpolation, cv2.INTER_LINEAR)
+    
     # 转换为数组并缩放
-    matrix = cv2.resize(np.array(canvas), target_size) / PIXEL_MAX_VALUE
+    matrix = cv2.resize(np.array(canvas), target_size, interpolation=interp_code) / PIXEL_MAX_VALUE
     
     # 清空画布
     draw.rectangle((0, 0, canvas_width, matrix_size), 255)
@@ -558,7 +668,13 @@ def _render_char_to_matrix(
 #endregion
 
 #region 🟦 获取字符图像集
-def get_char_data(chars, char_font_file, matrix_size, vertical_horizontal_ratio):
+def get_char_data(
+    chars,
+    char_font_file,
+    matrix_size,
+    vertical_horizontal_ratio,
+    interpolation: str = DEFAULT_INTERPOLATION
+):
     """
     从指定字符集中为每个字符生成对应的灰度图像矩阵，并将数据结构化后返回。
 
@@ -567,6 +683,7 @@ def get_char_data(chars, char_font_file, matrix_size, vertical_horizontal_ratio)
         char_font_file (str)             : 字体文件路径，用于绘制字符图像。
         matrix_size (int)                : 单个字符图像的高度，同时也是归一化后的宽度（对于非宽字符）。
         vertical_horizontal_ratio (float): 字符图像画布宽度与高度的比例。
+        interpolation (str, optional)    : 插值算法,默认为 bilinear
 
     Returns:
         list[dict]: 包含字符信息及其对应图像矩阵的字典列表，每个字典结构如下：
@@ -614,7 +731,8 @@ def get_char_data(chars, char_font_file, matrix_size, vertical_horizontal_ratio)
             matrix = _render_char_to_matrix(
                 char, canvas, font, matrix_size, 
                 is_wide=True, 
-                vertical_horizontal_ratio=vertical_horizontal_ratio
+                vertical_horizontal_ratio=vertical_horizontal_ratio,
+                interpolation=interpolation
             )
             
             # 🔹 添加到 wide_char_data
@@ -632,7 +750,8 @@ def get_char_data(chars, char_font_file, matrix_size, vertical_horizontal_ratio)
             matrix = _render_char_to_matrix(
                 char, canvas, font, matrix_size,
                 is_wide=False,
-                vertical_horizontal_ratio=vertical_horizontal_ratio
+                vertical_horizontal_ratio=vertical_horizontal_ratio,
+                interpolation=interpolation
             )
             
             # 🔹 添加到 char_data
@@ -713,7 +832,13 @@ def _find_best_wide_char(
         tuple: (wide_indice, wide_score) 最佳宽字符索引和得分
     """
     # 合并两个相邻矩形
-    combined = np.hstack((rectangle, next_rectangle))
+    if next_rectangle is None:
+        # 合并一个同等大小的空白矩形
+        blank_rectangle = np.ones_like(rectangle)
+        combined = np.hstack((rectangle, blank_rectangle))
+        #cprint(combined, 1)
+    else:
+        combined = np.hstack((rectangle, next_rectangle))
     
     # 计算每个宽字符的匹配得分
     sum_wide_data = [_calculate_match_score(combined, char['matrix']) for char in wide_char_data]
@@ -756,27 +881,34 @@ def _decide_character_type(
 #endregion
 
 #region 🟦 生成最终的输出字符串
-def get_final_output(sampling_array, char_data, wide_char_data, output_path, wide_sum_ratio=DEFAULT_WIDE_CHAR_RATIO):
+def get_final_output(
+    sampling_array: np.ndarray,
+    char_data: list,
+    wide_char_data: list,
+    output_path: str = None,
+    wide_sum_ratio: float = DEFAULT_WIDE_CHAR_RATIO
+) -> str:
     """
-    根据采样数组、字符数据、宽字符数据和输出路径生成最终输出结果。
-
+    根据采样数组和字符数据生成最终的字符画输出
+    
     Args:
-        sampling_array : 二维数组，表示采样矩阵
-        char_data      : 字符数据列表，每个元素包含字符矩阵和字符文本表示
-        wide_char_data : 宽字符数据列表，每个元素包含字符矩阵和字符文本表示
-        output_path    : 输出路径，字符串类型
-        wide_sum_ratio : 宽字符匹配得分的权重比例
-
+        sampling_array: 采样数组 (output_height x output_width x matrix_size x matrix_size)
+        char_data: 普通字符数据列表
+        wide_char_data: 宽字符数据列表
+        output_path: 输出文件路径 (可选)
+        wide_sum_ratio: 宽字符匹配得分的权重比例
+    
     Returns:
-        final_output: 最终输出结果，字符串类型
+        str: 生成的字符画字符串
     """
     final_output = ''
+    
     # 跳过标识，用于宽字符匹配时跳过下一个矩形
     skip_sign = False
     
-    # 🔶 遍历矩阵的每一行
+    #  遍历矩阵的每一行
     for index, row in enumerate(sampling_array):
-        # 🟢 遍历矩阵的每个矩形
+        #  遍历矩阵的每个矩形
         for i, rectangle in enumerate(row):
             # 🔹 如果跳过标识为真(说明上一次用的宽字符)，则跳过当前矩形
             if skip_sign:
@@ -791,7 +923,24 @@ def get_final_output(sampling_array, char_data, wide_char_data, output_path, wid
             use_wide = False
             wide_indice = None
             
-            if len(wide_char_data) > 0 and not is_last_in_row:
+            # 🔹 情况 1: 只有宽字符集,直接使用最优宽字符
+            if len(char_data) == 0 and len(wide_char_data) > 0:
+                next_rectangle = row[i + 1] if not is_last_in_row else None
+                wide_indice, wide_score = _find_best_wide_char(
+                    rectangle, next_rectangle, wide_char_data
+                )
+                if wide_indice is not None:
+                    use_wide = True
+                    # 如果不是行末尾,需要跳过下一个矩形
+                    if not is_last_in_row:
+                        skip_sign = True
+            
+            # 🔹 情况 2: 只有普通字符集,直接使用最优普通字符
+            elif len(wide_char_data) == 0:
+                pass  # 使用下面的普通字符逻辑
+            
+            # 🔹 情况 3: 两者都有,需要比较选择
+            elif len(wide_char_data) > 0 and not is_last_in_row:
                 wide_indice, wide_score = _find_best_wide_char(
                     rectangle, row[i + 1], wide_char_data
                 )
@@ -803,14 +952,16 @@ def get_final_output(sampling_array, char_data, wide_char_data, output_path, wid
                 
                 if char_type == 'wide':
                     use_wide = True
+                    skip_sign = True
             
             # 🟢 根据决定添加字符
             if use_wide and wide_indice is not None:
                 skip_sign = True
                 final_output += wide_char_data[wide_indice]['character']
             elif normal_indice is not None:
+                #cprint("normal", 1)
                 final_output += char_data[normal_indice]['character']
-            else:
+            else:                
                 # 如果两者都为空,使用占位符
                 final_output += '?'
             
@@ -818,7 +969,7 @@ def get_final_output(sampling_array, char_data, wide_char_data, output_path, wid
         if index != len(sampling_array) - 1:
             final_output = f"{final_output}\n"
     
-    # 🔶 如果output_path不为空且不是空字符串，则输出到文件
+    #  如果output_path不为空且不是空字符串，则输出到文件
     if output_path is not None and output_path != '':
         # 将生成的字符画输出到文件
         with open(output_path, "w", encoding="utf-8") as text_file:
