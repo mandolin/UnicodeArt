@@ -1,10 +1,23 @@
 import configargparse # 一个可使用配置文件的argparse替代库
+import os
 import re
 import math
 import numpy as np
 import cv2
 from PIL import Image, ImageDraw, ImageFont
 from .cprint import cprint
+from .config import (
+    DEFAULT_FONT_REDUCE,
+    DEFAULT_WIDE_CHAR_RATIO,
+    DEFAULT_MATRIX_SIZE,
+    DEFAULT_VERTICAL_HORIZONTAL_RATIO,
+    MAX_SUM_DATA,
+    PIXEL_MAX_VALUE,
+    DEFAULT_CHARSET,
+    WIDE_CHAR_PATTERN,
+    INTERPOLATION_MAP,
+    DEFAULT_INTERPOLATION,
+)
 
 #todo1 更新python官方仓库版本
 
@@ -36,14 +49,25 @@ def get_parser():
     # 添加其它参数，用于指定字符、输出文件名等
     p.add_argument('-a', '--chars',  help='用来构成字符画的基本字符')
     p.add_argument('-o', '--output', help='生成文件的路径')
-    p.add_argument('-e', '--height', help='输出高度，即行数，也用作字体大小')
+    p.add_argument('-e', '--height', help='输出高度 (含义取决于 --height-mode)')
     p.add_argument('-w', '--width',  help='输出宽度，即字符画横向对应的字符数')
     p.add_argument('-f', '--font',   help='用于显示的文本字体')
+    
+    # 🔶🟢 多行文本支持参数
+    p.add_argument('--text-align', choices=['left', 'center', 'right'], default='left',
+                   help='多行文本对齐方式 (默认: left)')
+    p.add_argument('--line-spacing', type=int, default=0,
+                   help='字符画行间距 (对应输入文本行的视觉块之间的空行数,单位:字符画行数)')
+    
+    # 🔶🟢 高度模式参数
+    p.add_argument('--height-mode', choices=['line', 'total'], default='line',
+                   help='高度模式: line=每行字符画高度(默认), total=整体字符画总高度')
+    
     # todo3 增加字符字体
     # todo2 增加字体类型（粗体、斜体等）
-    # todo3 增加“是否去除行尾空格”
+    # todo3 增加"是否去除行尾空格"
     # todo3 增加图像resize操作时的插值设定参数
-    # todo3 实现对多行文本的支持
+    # ✅ 已实现多行文本支持
     # todo3 增加裱框设置选项
     p.add_argument('-r', '--ratio',  help='每个字符相对于其宽度的高度倍数', default='2.0')
     p.add_argument('-v', '--invert', help='反转图像', action='store_true')
@@ -54,58 +78,177 @@ def get_parser():
     return p
 #endregion
 
-#region 🟦 操作台基准图像相关函数
+#region 🟦 文本预处理相关函数
 
-# 🔶 生成操作台基准图像
-def get_baseimg(text_string, art_font, height, matrix_size):
+# 🔶 预处理文本输入,支持多行和文件读取
+def preprocess_text_input(text_string):
     """
-    获取图像对象
+    预处理文本输入,支持 \n 分隔的多行文本和 @filename.txt 语法
     
     Args:
-        text_string: 要绘制的文本字符串
-        art_font   : 绘图所用字体
-        height     : 图像高度
-        matrix_size: 用于采样的矩阵大小
+        text_string: 原始文本字符串
+    
+    Returns:
+        list[str]: 处理后的文本行列表
+    
+    Example:
+        >>> preprocess_text_input("line1\nline2")
+        ['line1', 'line2']
+        >>> preprocess_text_input("@test.txt")  # 从文件读取
+        ['content from file']
+    """
+    # 检查是否是文件引用语法 (@filename.txt)
+    if text_string.startswith('@'):
+        file_path = text_string[1:]  # 去掉 @ 符号
+        
+        # 验证文件是否存在
+        if not os.path.exists(file_path):
+            cprint(f'err:文件未找到: {file_path}', 1)
+            exit()
+        
+        # 读取文件内容
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            # 按换行符分割,保留空行
+            lines = content.split('\n')
+            # 移除末尾的空行(如果文件以换行符结尾)
+            if lines and lines[-1] == '':
+                lines.pop()
+            return lines
+        except Exception as e:
+            cprint(f'err:无法读取文件 {file_path}: {str(e)}', 1)
+            exit()
+    
+    # 普通文本,按 \n 分割
+    lines = text_string.split('\n')
+    return lines
 
+#endregion
+
+#region 🟦 操作台基准图像相关函数
+
+# 🔶 生成操作台基准图像 (支持多行文本和高度模式)
+def get_baseimg(text_string, art_font, height, matrix_size, text_align='left', line_spacing=0, height_mode='line'):
+    """
+    获取图像对象 (支持多行文本和高度模式)
+    
+    Args:
+        text_string : 要绘制的文本字符串 (可以是多行,用 \n 分隔,或 @filename.txt 语法)
+        art_font    : 绘图所用字体
+        height      : 输出高度 (含义取决于 height_mode)
+        matrix_size : 用于采样的矩阵大小
+        text_align  : 文本对齐方式 ('left', 'center', 'right')
+        line_spacing: 字符画行间距 (对应输入文本行的视觉块之间的空行数,单位:字符画行数)
+        height_mode : 高度模式 ('line'=每行高度, 'total'=整体总高度)
     
     Returns:
         Image: 图像对象
     """
     
+    # 🟢 预处理文本输入,支持多行和文件读取
+    lines = preprocess_text_input(text_string)
+    num_lines = len(lines)
+    
     # 🟢 绘字时边缘预留空白尺寸
-    fontreduce=0 # todo 改为可配置项
-    # 🟢 图格单元尺寸
-    rectunit=int(height)*matrix_size
-
+    fontreduce = DEFAULT_FONT_REDUCE
+    
+    # 🟢 根据高度模式计算整体图像高度
+    if height_mode == 'total':
+        # total 模式: height 表示整体总高度
+        total_height_pixels = int(height) * matrix_size
+    else:
+        # line 模式 (默认): height 表示每行高度
+        # 关键修正: 先计算纯文本高度,再额外加上行间距高度
+        text_height_pixels = int(height) * matrix_size * num_lines
+        
+        # 如果有行间距,额外增加总高度
+        if line_spacing > 0 and num_lines > 1:
+            spacing_pixels = line_spacing * matrix_size * (num_lines - 1)
+            total_height_pixels = text_height_pixels + spacing_pixels
+        else:
+            total_height_pixels = text_height_pixels
+    
+    #  计算每行的实际高度 (line 模式下,每行高度固定为 height * matrix_size)
+    if height_mode == 'line':
+        # line 模式: 每行高度固定,不受行间距影响
+        rectunit = int(height) * matrix_size
+    else:
+        # total 模式: 需要根据总高度和行数计算每行高度
+        if line_spacing > 0 and num_lines > 1:
+            # 总空行高度
+            total_spacing_pixels = line_spacing * matrix_size * (num_lines - 1)
+            # 实际用于绘制文本的高度
+            drawing_height = total_height_pixels - total_spacing_pixels
+            rectunit = drawing_height // num_lines if num_lines > 0 else total_height_pixels
+        else:
+            rectunit = total_height_pixels // num_lines if num_lines > 0 else total_height_pixels
+    
+    # 确保每行高度至少为 2px (避免除以零)
+    rectunit = max(rectunit, 2)
+    
+    cprint(['height_mode:', height_mode])
+    cprint(['num_lines:', num_lines])
+    cprint(['total_height_pixels:', total_height_pixels])
+    cprint(['rectunit (per line):', rectunit])
+    cprint(['line_spacing:', line_spacing])
+    
     # 🟢 从指定的字体文件中加载字体
-    # afont 表示已定义尺寸的字体对象
-    # rectunit - fontreduce*2 表示字体的大小，减去 fontreduce*2 是为了避免字体过于接近图像边缘
     afont = ImageFont.truetype(art_font, rectunit - fontreduce*2)
-    # 🟢 获取文本基线宽度和字符实际宽度列表
-    basewidth, text_widths=get_basewidth(0, text_string, afont, fontreduce*2)
-
-    # 🟢 创建一个新的灰度图像
-    '''
-    'L' 表示图像的模式为灰度图像，后面的元组表示图像的尺寸（宽度、高度）
-    rectunit为图格单元尺寸
-    255 表示初始像素值，这里表示白色背景
-    '''
-    baseimg = Image.new('L', (basewidth, rectunit), 255)
-
+    
+    # 🟢 计算每行的宽度和字符宽度列表
+    all_line_widths = []  # 存储每行的总宽度
+    all_text_widths = []  # 存储每行的字符宽度列表
+    
+    for line in lines:
+        basewidth, text_widths = get_basewidth(0, line, afont, fontreduce*2)
+        all_line_widths.append(basewidth)
+        all_text_widths.append(text_widths)
+    
+    # 🟢 计算最终图像的宽度
+    max_width = max(all_line_widths) if all_line_widths else rectunit
+    
+    # 🟢 创建一个新的灰度图像 (使用计算的总高度)
+    baseimg = Image.new('L', (max_width, total_height_pixels), 255)
+    
     # 🟢 创建一个 ImageDraw 对象，用于在图像上绘制文本
     context = ImageDraw.Draw(baseimg)
     
-    # 🟢 在图像上绘制文本
-    # (fontreduce, fontreduce) 表示文本的起始位置坐标
-    # 0 表示文本的颜色，这里表示黑色
-    draw_text(text_widths, context, (fontreduce, fontreduce), text_string, afont, 0, fontreduce*2)
-
-    cprint(['text_widths',text_widths])
+    # 🟢 逐行绘制文本,应用对齐方式
+    current_y = fontreduce  # 当前行的 Y 坐标
+    
+    for i, line in enumerate(lines):
+        line_width = all_line_widths[i]
+        text_widths = all_text_widths[i]
+        
+        # 计算 X 坐标 (根据对齐方式)
+        if text_align == 'left':
+            x_offset = fontreduce
+        elif text_align == 'center':
+            x_offset = fontreduce + (max_width - line_width) // 2
+        elif text_align == 'right':
+            x_offset = fontreduce + (max_width - line_width)
+        
+        # 绘制该行文本
+        draw_text(text_widths, context, (x_offset, current_y), line, afont, 0, fontreduce*2)
+        
+        # 更新 Y 坐标到下一行 (加上行间距)
+        if i < num_lines - 1:
+            # 如果不是最后一行,加上行间距 (line_spacing 个字符画行的高度)
+            current_y += rectunit + (line_spacing * matrix_size)
+        else:
+            # 最后一行不需要加行间距
+            current_y += rectunit
+    
+    cprint(['lines count:', num_lines])
+    cprint(['all_line_widths:', all_line_widths])
+    cprint(['max_width:', max_width])
+    cprint(['final total_height:', total_height_pixels])
+    
     # 🟢 将图像转换为NumPy数组
     #baseimg.save('v1.png')
     baseimg = np.array(baseimg)
-
-
+    
     return baseimg
 
 # 🔶 获取操作台基准图像宽度
@@ -157,8 +300,126 @@ def draw_text(text_widths, draw, position, text, font, fill, spacing):
         x += text_widths[i]+spacing
 #endregion
 
+#region 🟦 采样数组生成辅助函数
+
+# 🔶 计算采样块尺寸
+def _calculate_block_size(
+    source_height: int,
+    source_width: int,
+    output_height: int,
+    output_width: int,
+    vertical_horizontal_ratio: float
+) -> tuple:
+    """
+    根据源图像尺寸和输出尺寸计算采样块大小
+    
+    Args:
+        source_height: 源图像高度
+        source_width: 源图像宽度
+        output_height: 输出行数 (可能为 None)
+        output_width: 输出列数 (可能为 None)
+        vertical_horizontal_ratio: 垂直水平比例
+    
+    Returns:
+        tuple: (rectsize_h, rectsize_w) 采样块的高度和宽度
+    
+    Note:
+        - 确保返回值 >= 1,避免除以零错误
+        - 当源图像尺寸小于输出尺寸时,会自动调整块尺寸为最小值 1
+    """
+    if output_height is not None and output_width is not None:
+        # 如果指定了高度和宽度，则根据指定的高度和宽度计算矩形的大小
+        rectsize_h = math.ceil(source_height / int(output_height))
+        rectsize_w = math.ceil(source_width / (int(output_width) * vertical_horizontal_ratio))
+    elif output_height is not None:
+        # 如果只指定了高度，则根据指定的高度和纵横比例计算矩形的大小
+        rectsize_h = math.ceil(source_height / int(output_height))
+        rectsize_w = round(rectsize_h / vertical_horizontal_ratio)
+    elif output_width is not None:
+        # 如果只指定了宽度，则根据指定的宽度和纵横比例计算矩形的大小
+        rectsize_w = math.ceil(source_width / (int(output_width) * vertical_horizontal_ratio))
+        rectsize_h = round(rectsize_w * vertical_horizontal_ratio)
+    else:
+        # 如果既没有指定高度也没有指定宽度，则使用默认的矩形大小
+        rectsize_h = DEFAULT_MATRIX_SIZE * 2  # 保持一定的默认比例，或者使用之前的 10
+        rectsize_w = DEFAULT_MATRIX_SIZE      # 保持一定的默认比例，或者使用之前的 5
+    
+    # 🟢 确保块尺寸不为零,同时保持垂直水平比例
+    # rectsize_h 至少为 2,保证有足够的采样精度
+    # rectsize_w 至少为 1,避免除以零错误
+    rectsize_h = max(2, rectsize_h)
+    rectsize_w = max(1, rectsize_w)
+        
+    return rectsize_h, rectsize_w
+
+# 🔶 计算输出维度
+def _calculate_output_dimensions(
+    source_height: int,
+    source_width: int,
+    block_h: int,
+    block_w: int
+) -> tuple:
+    """
+    计算输出字符画的行数和列数
+    
+    Args:
+        source_height: 源图像高度
+        source_width: 源图像宽度
+        block_h: 采样块高度
+        block_w: 采样块宽度
+    
+    Returns:
+        tuple: (output_height, output_width) 输出的行数和列数
+    """
+    output_height = math.ceil(source_height / block_h)
+    output_width = math.ceil(source_width / block_w)
+    return output_height, output_width
+
+# 🔶 提取并采样单个图像块
+def _extract_and_sample_block(
+    baseimg: np.ndarray,
+    start_y: int,
+    start_x: int,
+    block_h: int,
+    block_w: int,
+    matrix_size: int
+) -> np.ndarray:
+    """
+    从源图像中提取一个块并进行缩放采样
+    
+    Args:
+        baseimg: 源图像数组
+        start_y: 起始Y坐标
+        start_x: 起始X坐标
+        block_h: 块高度
+        block_w: 块宽度
+        matrix_size: 目标矩阵尺寸
+    
+    Returns:
+        np.ndarray: 缩放后的归一化矩阵 (matrix_size x matrix_size)
+    """
+    # 计算结束索引，避免超过图像边界
+    end_y = min(start_y + block_h, baseimg.shape[0])
+    end_x = min(start_x + block_w, baseimg.shape[1])
+    
+    # 获取当前小矩形块的数据
+    crop_region = baseimg[start_y:end_y, start_x:end_x]
+    
+    # 创建一个与矩形块相同大小的全白图像（值为255）
+    padded_crop = np.ones((block_h, block_w)) * PIXEL_MAX_VALUE
+    
+    # 将矩形块的数据复制到全白图像中，实现裁剪填充
+    padded_crop[:crop_region.shape[0], :crop_region.shape[1]] = crop_region
+    
+    # 调整裁剪后的矩形块大小为 matrix_size x matrix_size
+    resized = cv2.resize(padded_crop, dsize=(matrix_size, matrix_size), interpolation=cv2.INTER_CUBIC)
+    
+    return resized
+
+#endregion
+
 #region 🟦 生成采样数组
-def get_sampling_array(baseimg: np.ndarray, height, width, vertical_horizontal_ratio=2, matrix_size=5):
+def get_sampling_array(baseimg: np.ndarray, height, width, vertical_horizontal_ratio=DEFAULT_VERTICAL_HORIZONTAL_RATIO, matrix_size=DEFAULT_MATRIX_SIZE):
     """
     生成采样数组
 
@@ -173,88 +434,127 @@ def get_sampling_array(baseimg: np.ndarray, height, width, vertical_horizontal_r
         np.ndarray: 采样数组
     """
     cprint(['get_sampling_array',height, width, vertical_horizontal_ratio, matrix_size])
+    
     # 🔶 获取图像的高度和宽度
     source_height, source_width = baseimg.shape[:2]
     cprint(['source_height,source_width',source_height,source_width])
 
-    # 🔶 对于输出的每个字符/像素，从形状（rectsize_h，rectsize_w）计算密度
-    # 这里的换算是因为通常的字体，包括控制台字体，高度大约是宽度的两倍（通过vertical_horizontal_ratio（args.ratio）配置）
-    if height is not None and width is not None:
-        # 如果指定了高度和宽度，则根据指定的高度和宽度计算矩形的大小
-        rectsize_h = math.ceil(source_height / int(height))
-        rectsize_w = math.ceil(source_width / (int(width) * vertical_horizontal_ratio))
-    elif height is not None:
-        # 如果只指定了高度，则根据指定的高度和纵横比例计算矩形的大小
-        rectsize_h = math.ceil(source_height / int(height))
-        rectsize_w = round(rectsize_h / vertical_horizontal_ratio)
-    elif width is not None:
-        # 如果只指定了宽度，则根据指定的宽度和纵横比例计算矩形的大小
-        rectsize_w = math.ceil(source_width / (int(width) * vertical_horizontal_ratio))
-        rectsize_h = round(rectsize_w * vertical_horizontal_ratio)
-    else:
-        # 如果既没有指定高度也没有指定宽度，则使用默认的矩形大小
-        rectsize_h = 10
-        rectsize_w = 5
-
-    # 🔶 计算输出字符画的高度（行数）和宽度（每行字符数），以便容纳所有的矩形块
-    output_height = math.ceil(source_height / rectsize_h)
-    output_width  = math.ceil(source_width  / rectsize_w)
-
-    # 🔶 初始化用于存储采样结果的数
-    '''
-    np.zeros: 这是 NumPy 库的函数，用于创建一个全零的数组。
+    # 🔶 计算采样块尺寸
+    rectsize_h, rectsize_w = _calculate_block_size(
+        source_height, source_width, height, width, vertical_horizontal_ratio
+    )
     
-    (output_height, output_width, matrix_size, matrix_size): 这个元组指定了数组的形状，即四个维度的大小。
-    output_height: 输出图像的高度，表示在垂直方向上有多少个小矩形块。
-    output_width: 输出图像的宽度，表示在水平方向上有多少个小矩形块。
-    matrix_size: 每个小矩形块的高度。
-    matrix_size: 每个小矩形块的宽度。
-    这个数组 sampling_array 的形状实际上是一个四维数组。在上下文中，每个元素 sampling_array[i][j] 是一个 matrix_size x matrix_size 的矩阵，表示图像中对应位置的小矩形块的数据。
+    #  计算输出维度
+    output_height, output_width = _calculate_output_dimensions(
+        source_height, source_width, rectsize_h, rectsize_w
+    )
 
-    这个数组将在后续的代码中用于存储图像的分割数据，每个小矩形块将被放置在相应的位置，用于后续的字符替代。
-    '''
+    # 🔶 初始化用于存储采样结果的数组
     sampling_array = np.zeros((output_height, output_width, matrix_size, matrix_size))
 
-    # 🔶 循环遍历图像的行
-    for y_index, actual_y_index in enumerate(range(0, len(baseimg), rectsize_h)):
-        # 遍历源图像的垂直方向，每次移动 rectsize_h 个像素
-        y = baseimg[actual_y_index]
-
-        for x_index, actual_x_index in enumerate(range(0, len(y), rectsize_w)):
-            # 遍历源图像的水平方向，每次移动 rectsize_w 个像素
-            # 这里的每次循环对应于一个小矩形块或一个输出像素
-
-            # 计算当前小矩形块的结束索引，避免超过图像边界
-            blockend_y_index = min(actual_y_index + rectsize_h, len(baseimg) - 1)
-            blockend_x_index = min(actual_x_index + rectsize_w, len(y) - 1)
-
-            # 获取当前小矩形块的数据
-            crop_region = baseimg[actual_y_index:blockend_y_index, actual_x_index:blockend_x_index]
-
-            # 创建一个与矩形块相同大小的全白图像（值为255）
-            padded_crop_region = np.ones((rectsize_h, rectsize_w)) * 255
-            #print(rectsize_h,rectsize_w,padded_crop_region,1)
-
-            # 将矩形块的数据复制到全白图像中，实现裁剪
-            padded_crop_region[:crop_region.shape[0], :crop_region.shape[1]] = crop_region
-
-            # 调整裁剪后的矩形块大小为 matrix_size x matrix_size
-            resized_padded_crop_region = cv2.resize(padded_crop_region, dsize=(matrix_size, matrix_size), interpolation=cv2.INTER_CUBIC)
-
-            # 将调整大小后的矩形块数据存储在数组 sampling_array 的相应位置
-            sampling_array[y_index][x_index] = resized_padded_crop_region
+    # 🔶 循环遍历图像的行和列，提取并采样每个块
+    for y_index, actual_y in enumerate(range(0, len(baseimg), rectsize_h)):
+        for x_index, actual_x in enumerate(range(0, len(baseimg[0]), rectsize_w)):
+            # 提取并采样单个图像块
+            block = _extract_and_sample_block(
+                baseimg, actual_y, actual_x, 
+                rectsize_h, rectsize_w, matrix_size
+            )
+            
+            # 存储到采样数组
+            sampling_array[y_index][x_index] = block
         
     # 🔶 将像素值缩放到 0-1 范围
-    '''
-    这是 NumPy 数组的一种矩阵计算。这行代码的目的是将数组 sampling_array 中的每个元素除以 255.0。这个操作实际上是对数组中的每个元素进行标准化，使它们的值在 0 到 1 之间。
-
-    具体来说，假设 sampling_array 中的元素值为 0 到 255（通常表示灰度图像中的像素值），执行 sampling_array = sampling_array / 255.0 将每个元素的值除以 255.0，将它们转换为浮点数，并使它们的范围在 0 到 1 之间。
-
-    这种标准化通常在深度学习等任务中很常见，因为它有助于模型更好地处理输入数据，并在训练过程中更好地收敛。标准化后的数据有助于消除不同特征之间的尺度差异，使模型更容易学习到有效的表示。
-    '''
-    sampling_array = sampling_array / 255.0
+    sampling_array = sampling_array / PIXEL_MAX_VALUE
 
     return sampling_array
+#endregion
+
+#region 🟦 字符处理辅助函数
+
+# 🔶 判断字符是否为宽字符
+def _is_wide_character(char: str, pattern: re.Pattern) -> bool:
+    """
+    判断给定字符是否为宽字符
+    
+    Args:
+        char: 待判断的字符
+        pattern: 宽字符匹配的正则表达式模式
+    
+    Returns:
+        bool: 如果是宽字符返回 True,否则返回 False
+    """
+    return pattern.search(char) is not None
+
+# 🔶 创建字符画布
+def _create_character_canvas(
+    matrix_size: int,
+    vertical_horizontal_ratio: float,
+    is_wide: bool = False
+) -> Image.Image:
+    """
+    创建用于绘制字符的画布
+    
+    Args:
+        matrix_size: 矩阵尺寸
+        vertical_horizontal_ratio: 垂直水平比例
+        is_wide: 是否为宽字符画布
+    
+    Returns:
+        Image: 新建的灰度图像画布
+    """
+    if is_wide:
+        width = round(2 * matrix_size / vertical_horizontal_ratio)
+    else:
+        width = round(matrix_size / vertical_horizontal_ratio)
+    
+    return Image.new('L', (width, matrix_size), 255)
+
+# 🔶 渲染字符到矩阵
+def _render_char_to_matrix(
+    char: str,
+    canvas: Image.Image,
+    font: ImageFont.FreeTypeFont,
+    matrix_size: int,
+    is_wide: bool = False,
+    vertical_horizontal_ratio: float = DEFAULT_VERTICAL_HORIZONTAL_RATIO
+) -> np.ndarray:
+    """
+    将字符渲染到画布并转换为归一化矩阵
+    
+    Args:
+        char: 要渲染的字符
+        canvas: 绘图画布
+        font: 字体对象
+        matrix_size: 目标矩阵尺寸
+        is_wide: 是否为宽字符
+        vertical_horizontal_ratio: 垂直水平比例
+    
+    Returns:
+        np.ndarray: 归一化到 [0, 1] 的灰度矩阵
+    """
+    # 创建绘图对象
+    draw = ImageDraw.Draw(canvas)
+    
+    # 绘制字符
+    draw.text((0, 0), char, 0, font)
+    
+    # 计算目标尺寸
+    if is_wide:
+        target_size = (2 * matrix_size, matrix_size)
+        canvas_width = round(2 * matrix_size / vertical_horizontal_ratio)
+    else:
+        target_size = (matrix_size, matrix_size)
+        canvas_width = round(matrix_size / vertical_horizontal_ratio)
+    
+    # 转换为数组并缩放
+    matrix = cv2.resize(np.array(canvas), target_size) / PIXEL_MAX_VALUE
+    
+    # 清空画布
+    draw.rectangle((0, 0, canvas_width, matrix_size), 255)
+    
+    return matrix
+
 #endregion
 
 #region 🟦 获取字符图像集
@@ -286,63 +586,60 @@ def get_char_data(chars, char_font_file, matrix_size, vertical_horizontal_ratio)
     """
 
     #region 🔶 准备好相关变量
-    # 🟢 默认字符集，包含了基本的 ASCII 字符及部分特殊符号
-    charset = ' !"#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[]\\^_`abcdefghijklmnopqrstuvwxyz{|}~'
-    charset1 = ' 这是一个测试'
-
-    if chars is not None:
-        charset = chars
+    # 🟢 使用默认字符集或用户提供的字符集
+    charset = DEFAULT_CHARSET if chars is None else chars
         
-    # 🟢 用于筛选宽字符的正则表达式
-    pattern        = re.compile('[\u2010\u2012-\u2016\u2020-\u2022\u2025-\u2027\u2030\u2035\u203B\u203C\u2042\u2047-\u2049\u2051\u20DD\u20DE\u2100\u210A\u210F\u2121\u2135\u213B\u2160-\u216B\u2170-\u217B\u2215\u221F\u22DA\u22DB\u22EF\u2305-\u2307\u2312\u2318\u23B0\u23B1\u23BF-\u23CC\u23CE\u23DA\u23DB\u2423\u2460-\u24FF\u2600-\u2603\u2609\u260E\u260F\u2616\u2617\u261C-\u261F\u262F\u2668\u2672-\u267D\u26A0\u26BD\u26BE\u2702\u273D\u273F\u2740\u2756\u2776-\u277F\u2934\u2935\u29BF\u29FA\u29FB\u2B1A\u2E3A\u2E3B\u2E80-\u9FFF\uF900-\uFAFF\uFB00-\uFB04\uFE10-\uFE19\uFE30-\uFE6B\uFF01-\uFF60\uFFE0-\uFFE6\U0001F100-\U0001F10A\U0001F110-\U0001F12E\U0001F130-\U0001F16B\U0001F170-\U0001F19A\U0001F200-\U0001F251\U0002000B-\U0002F9F4]')
+    # 🟢 编译宽字符匹配模式
+    pattern = re.compile(WIDE_CHAR_PATTERN)
+    
     # 🟢 字符矩阵数据
     char_data      = []
     # 🟢 宽字符矩阵数据
     wide_char_data = []
+    
     # 🟢 加载字体作为单元字符的基准字体
     font = ImageFont.truetype(char_font_file, matrix_size)
-    # 🟢 用于绘制字符的图像单元
-    letter_image = Image.new('L', (round(matrix_size / vertical_horizontal_ratio), matrix_size), 255)
-    # 🟢 宽字符的图像单元
-    wide_letter_image = Image.new('L', (round(2*matrix_size / vertical_horizontal_ratio), matrix_size), 255)
     #endregion
 
     #region 🔶 遍历每个字符，创建字符矩阵并追加到 `char_data` 和 `wide_char_data`
 
     for char in charset:
         
-        # 判断是否为宽字符
-        match_result = pattern.search(char)
-
-        # 🟢 宽字符
-        if match_result is not None:
-            # 🔹 创建绘图对象
-            canvas = ImageDraw.Draw(wide_letter_image)
-            # 🔹 在图像上绘制字符
-            canvas.text((0, 0), char, 0, font)
-            # 🔹 添加到wide_char_data
+        # 🟢 判断是否为宽字符
+        if _is_wide_character(char, pattern):
+            # 🔹 创建宽字符画布
+            canvas = _create_character_canvas(matrix_size, vertical_horizontal_ratio, is_wide=True)
+            
+            # 🔹 渲染字符到矩阵
+            matrix = _render_char_to_matrix(
+                char, canvas, font, matrix_size, 
+                is_wide=True, 
+                vertical_horizontal_ratio=vertical_horizontal_ratio
+            )
+            
+            # 🔹 添加到 wide_char_data
             wide_char_data.append({
                 'character': char,
-                # 转换为 NumPy 数组，并将其调整大小为 (2*matrix_size, matrix_size)，这个数组即为当前字符对应的矩阵。/ 255.0 将矩阵中的像素值归一化到 [0, 1] 的范围。这是因为之前创建的灰度图像 letter_image 中的像素值范围是 [0, 255]。
-                'matrix': cv2.resize(np.array(wide_letter_image), (2*matrix_size, matrix_size)) / 255.0
+                'matrix': matrix
             })
-            # 🔹 清空图像，准备绘制下一个字符
-            canvas.rectangle((0, 0, round(2*matrix_size / vertical_horizontal_ratio), matrix_size), 255)
 
         # 🟢 普通Ascii字符
         else:
-            # 🔹 创建绘图对象
-            canvas = ImageDraw.Draw(letter_image)
-            # 🔹 在图像上绘制字符
-            canvas.text((0, 0), char, 0, font)
-            # 🔹 添加到char_data
+            # 🔹 创建普通字符画布
+            canvas = _create_character_canvas(matrix_size, vertical_horizontal_ratio, is_wide=False)
+            
+            # 🔹 渲染字符到矩阵
+            matrix = _render_char_to_matrix(
+                char, canvas, font, matrix_size,
+                is_wide=False,
+                vertical_horizontal_ratio=vertical_horizontal_ratio
+            )
+            
+            # 🔹 添加到 char_data
             char_data.append({
                 'character': char,
-                # 转换为 NumPy 数组，并将其调整大小为 (matrix_size, matrix_size)，这个数组即为当前字符对应的矩阵。/ 255.0 将矩阵中的像素值归一化到 [0, 1] 的范围。这是因为之前创建的灰度图像 letter_image 中的像素值范围是 [0, 255]。
-                'matrix': cv2.resize(np.array(letter_image), (matrix_size, matrix_size)) / 255.0
+                'matrix': matrix
             })
-            # 🔹 清空图像，准备绘制下一个字符
-            canvas.rectangle((0, 0, round(matrix_size / vertical_horizontal_ratio), matrix_size), 255)
         
         # 打印当前字符（可选，用于调试或查看字符处理的进展）
         cprint(char)
@@ -354,70 +651,168 @@ def get_char_data(chars, char_font_file, matrix_size, vertical_horizontal_ratio)
     return char_data, wide_char_data
 #endregion
 
+#region 🟦 字符匹配辅助函数
+
+# 🔶 计算匹配得分
+def _calculate_match_score(rectangle: np.ndarray, char_matrix: np.ndarray) -> float:
+    """
+    计算矩形数据与字符矩阵的匹配得分 (绝对差值之和)
+    
+    Args:
+        rectangle: 采样矩形数据
+        char_matrix: 字符矩阵数据
+    
+    Returns:
+        float: 匹配得分 (越小越匹配)
+    """
+    return np.sum(np.absolute(rectangle - char_matrix))
+
+# 🔶 查找最佳普通字符
+def _find_best_normal_char(
+    rectangle: np.ndarray,
+    char_data: list
+) -> tuple:
+    """
+    在普通字符集中找到最佳匹配字符
+    
+    Args:
+        rectangle: 采样矩形数据
+        char_data: 普通字符数据列表
+    
+    Returns:
+        tuple: (indice, min_score) 最佳字符索引和最小得分
+               如果 char_data 为空,返回 (None, MAX_SUM_DATA)
+    """
+    if len(char_data) == 0:
+        return None, MAX_SUM_DATA
+    
+    # 计算每个字符的匹配得分
+    sum_data = [_calculate_match_score(rectangle, char['matrix']) for char in char_data]
+    
+    # 找到最小得分的索引
+    indice = np.argmin(sum_data)
+    min_score = sum_data[indice]
+    
+    return indice, min_score
+
+# 🔶 查找最佳宽字符
+def _find_best_wide_char(
+    rectangle: np.ndarray,
+    next_rectangle: np.ndarray,
+    wide_char_data: list
+) -> tuple:
+    """
+    在宽字符集中找到最佳匹配字符 (合并两个相邻矩形)
+    
+    Args:
+        rectangle: 当前采样矩形
+        next_rectangle: 下一个采样矩形
+        wide_char_data: 宽字符数据列表
+    
+    Returns:
+        tuple: (wide_indice, wide_score) 最佳宽字符索引和得分
+    """
+    # 合并两个相邻矩形
+    combined = np.hstack((rectangle, next_rectangle))
+    
+    # 计算每个宽字符的匹配得分
+    sum_wide_data = [_calculate_match_score(combined, char['matrix']) for char in wide_char_data]
+    
+    # 找到最小得分的索引
+    wide_indice = np.argmin(sum_wide_data)
+    wide_score = sum_wide_data[wide_indice]
+    
+    return wide_indice, wide_score
+
+# 🔶 决定使用普通字符还是宽字符
+def _decide_character_type(
+    normal_score: float,
+    wide_score: float,
+    wide_ratio: float,
+    is_last_in_row: bool
+) -> str:
+    """
+    根据得分决定使用普通字符还是宽字符
+    
+    Args:
+        normal_score: 普通字符最小得分
+        wide_score: 宽字符最小得分
+        wide_ratio: 宽字符权重比例
+        is_last_in_row: 是否为行末尾
+    
+    Returns:
+        str: 'normal' 或 'wide'
+    """
+    # 如果是行末尾,不能使用宽字符
+    if is_last_in_row:
+        return 'normal'
+    
+    # 如果宽字符得分足够小,则使用宽字符
+    if wide_score < wide_ratio * normal_score:
+        return 'wide'
+    
+    return 'normal'
+
+#endregion
+
 #region 🟦 生成最终的输出字符串
-def get_final_output(sampling_array, char_data, wide_char_data, output_path):
+def get_final_output(sampling_array, char_data, wide_char_data, output_path, wide_sum_ratio=DEFAULT_WIDE_CHAR_RATIO):
     """
     根据采样数组、字符数据、宽字符数据和输出路径生成最终输出结果。
 
     Args:
-        sampling_array: 二维数组，表示采样矩阵
-        char_data     : 字符数据列表，每个元素包含字符矩阵和字符文本表示
-        wide_char_data: 宽字符数据列表，每个元素包含字符矩阵和字符文本表示
-        output_path   : 输出路径，字符串类型
+        sampling_array : 二维数组，表示采样矩阵
+        char_data      : 字符数据列表，每个元素包含字符矩阵和字符文本表示
+        wide_char_data : 宽字符数据列表，每个元素包含字符矩阵和字符文本表示
+        output_path    : 输出路径，字符串类型
+        wide_sum_ratio : 宽字符匹配得分的权重比例
 
     Returns:
         final_output: 最终输出结果，字符串类型
     """
     final_output = ''
     # 跳过标识，用于宽字符匹配时跳过下一个矩形
-    skip_sign    = False
+    skip_sign = False
+    
     # 🔶 遍历矩阵的每一行
     for index, row in enumerate(sampling_array):
         # 🟢 遍历矩阵的每个矩形
         for i, rectangle in enumerate(row):
-            # 1. 对于每个字符，计算：矩形数据和字符数据的元素绝对差值之和
-            # 2. 找到总和最小的字符的索引
-            # 3. 输出该字符的文本表示
-            # todo 增加其它匹配算法机制供可选（Mean Squared Error，MSE等）
-
             # 🔹 如果跳过标识为真(说明上一次用的宽字符)，则跳过当前矩形
             if skip_sign:
                 skip_sign = False
                 continue
 
-            # todo3 需要处理只设置了宽字符集的情形
+            # 🟢 查找最佳普通字符
+            normal_indice, normal_score = _find_best_normal_char(rectangle, char_data)
 
-            # 宽字符在差值判断时相对于普通字符的计算比例
-            wide_sum_ratio = 2 # todo3 改为从配置获取
-            # 普通字符集中每个字符 的 字符数据 和 矩形数据 的 元素绝对差值之和 的 数组
-            sum_data       = [np.sum(np.absolute(rectangle - char['matrix'])) for char in char_data]
-            sum_data_min   = 1000000
-            # (计算确定后的)普通字符的索引
-            indice = None
-
-            # 🔹 如果设置了普通字符集
-            if(len(char_data)>0):
-                indice        = np.argmin(sum_data)
-                sum_data_min  = sum_data[indice]
-
-            # 🔹 如果有设置宽字符集，且当前矩形不是此行的最后一个
-            if len(wide_char_data)>0 and i != len(row) - 1:
-                sum_wide_data = [np.sum(np.absolute(np.hstack((rectangle, row[i+1])) - char['matrix'])) for char in wide_char_data]
-                wide_indice   = np.argmin(sum_wide_data)
-
-                # 比对宽字符和普通字符的效果，如果宽字符的比率差值更小，则使用宽字符并加入到输出中
-                if sum_wide_data[wide_indice] < wide_sum_ratio * sum_data_min:
-                    #cprint(wide_char_data[0]['matrix'],1)
-                    #cprint(row[52],1)
-                    #cprint(i,1)
-                    #cprint(np.absolute(np.hstack((row[52], row[i]))),1)
-                    #exit()
-                    skip_sign = True
-                    final_output += f"{wide_char_data[wide_indice]['character']}"
-                    continue
+            # 🟢 查找最佳宽字符 (如果不是行末尾且有宽字符集)
+            is_last_in_row = (i == len(row) - 1)
+            use_wide = False
+            wide_indice = None
             
-            # 如果用的是普通字符，则加入到输出中
-            final_output += f"{char_data[indice]['character']}"
+            if len(wide_char_data) > 0 and not is_last_in_row:
+                wide_indice, wide_score = _find_best_wide_char(
+                    rectangle, row[i + 1], wide_char_data
+                )
+                
+                # 决定使用哪种字符
+                char_type = _decide_character_type(
+                    normal_score, wide_score, wide_sum_ratio, is_last_in_row
+                )
+                
+                if char_type == 'wide':
+                    use_wide = True
+            
+            # 🟢 根据决定添加字符
+            if use_wide and wide_indice is not None:
+                skip_sign = True
+                final_output += wide_char_data[wide_indice]['character']
+            elif normal_indice is not None:
+                final_output += char_data[normal_indice]['character']
+            else:
+                # 如果两者都为空,使用占位符
+                final_output += '?'
             
         # 🟢 除非是最后一行，否则添加换行符
         if index != len(sampling_array) - 1:

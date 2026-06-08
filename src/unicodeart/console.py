@@ -57,6 +57,11 @@ def console():
     debug_tags                = args.debug        # debug标签设定
     matrix_size               = int(args.matrix)  # 将字符串类型的矩阵大小参数转换为整数
     vertical_horizontal_ratio = float(args.ratio) # 将字符串类型的高度宽度比例参数转换为浮点数
+    
+    # 🔶🟢 多行文本支持参数
+    text_align                = args.text_align   # 文本对齐方式
+    line_spacing              = args.line_spacing # 字符画行间距
+    height_mode               = args.height_mode  # 高度模式 ('line' 或 'total')
 
     #endregion
 
@@ -118,35 +123,40 @@ def console():
 
     #endregion
 
-    #region 🟦㈢ 准备好操作台图像
+    #region ㈢ 准备好操作台图像
     if image_file is not None:
         baseimg = image_file
     else:
-        baseimg = unicodeart_util.get_baseimg(text_string, art_font, height, matrix_size)
+        baseimg = unicodeart_util.get_baseimg(text_string, art_font, height, matrix_size, text_align, line_spacing, height_mode)
     # 如果设置了反转选项，反转图像颜色（变为黑底效果）
     if invert is True:
         baseimg = cv2.bitwise_not(baseimg)
     #endregion
 
     cprint(baseimg)
-    #region 🟦㈣ 根据操作台图像生成采样数组        
-    sampling_array=unicodeart_util.get_sampling_array(baseimg, height, width, vertical_horizontal_ratio, matrix_size)
+    
+    # 🟢 根据高度模式计算实际采样高度
+    if height_mode == 'total':
+        # total 模式: height 就是总高度 (已包含行间距)
+        actual_sampling_height = int(height)
+    else:
+        # line 模式 (默认): 计算总行数,然后当作 total 模式处理
+        # 总行数 = 文本行高度 + 行间距高度
+        lines_count = len(unicodeart_util.preprocess_text_input(text_string))
+        text_lines_height = int(height) * lines_count
+        spacing_lines_height = line_spacing * max(0, lines_count - 1)
+        actual_sampling_height = text_lines_height + spacing_lines_height
+    
+    #region ㈣ 根据操作台图像生成采样数组        
+    sampling_array = unicodeart_util.get_sampling_array(baseimg, actual_sampling_height, width, vertical_horizontal_ratio, matrix_size)
     #endregion
 
-    #region 🟦㈤ 根据字符集参数准备好采样字符数组
+    #region ㈤ 根据字符集参数准备好采样字符数组
     #todo3 暂用art_font用作字符字体，后期增加单独字符字体参数
     char_data, wide_char_data=unicodeart_util.get_char_data(chars, art_font, matrix_size, vertical_horizontal_ratio)
     #endregion
         
-    #region 🟦㈥ 通过对采样字符数组和操作台图像采样数组进行比对，生成最终输出的字符串
+    #region ㈥ 通过对采样字符数组和操作台图像采样数组进行比对，生成最终输出的字符串
     final_output = unicodeart_util.get_final_output(sampling_array, char_data, wide_char_data, output_path)
     cprint(final_output,1)
     #endregion
-
-
-if __name__ == "__main__":
-    cprint('console:__main__')
-    console()     
-    
-
-    
