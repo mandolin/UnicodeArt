@@ -1,0 +1,75 @@
+{
+  "meta": {
+    "language": "en-US",
+    "version": "1.0.0",
+    "last_updated": "2026-06-09"
+  },
+  
+  "error": {
+    "file_not_found": "Image file not found: {path}",
+    "cannot_read_image": "Cannot read image: {path}",
+    "unsupported_format": "Unsupported format: {format}",
+    "font_load_failed": "Failed to load font: {font_path}",
+    "invalid_parameter": "Invalid parameter: {param_name} = {value}",
+    "missing_required_param": "Missing required parameter: {param_name}",
+    "conflicting_params": "Conflicting parameters: {param1} and {param2} cannot be used together"
+  },
+  
+  "warning": {
+    "deprecated_feature": "Warning: Feature '{feature}' is deprecated and will be removed in future versions",
+    "performance_slow": "Warning: Current configuration may cause slow performance (matrix={matrix}, interpolation={interpolation})",
+    "wide_char_fallback": "Warning: No suitable wide character found, using placeholder '?'"
+  },
+  
+  "info": {
+    "processing_start": "Starting processing...",
+    "processing_complete": "Processing complete",
+    "saving_output": "Saving output to: {output_path}",
+    "benchmark_start": "Starting performance benchmark...",
+    "benchmark_complete": "Performance benchmark complete",
+    "visualization_start": "Generating visualization report...",
+    "visualization_complete": "Visualization report generated"
+  },
+  
+  "success": {
+    "file_saved": "File successfully saved to: {path}",
+    "test_passed": "Test passed",
+    "installation_success": "Installation successful"
+  },
+  
+  "cli": {
+    "help_description": "Generate ASCII art from input text or image",
+    "config_help": "Path to configuration file",
+    "image_help": "Any image file supported by cv2",
+    "text_help": "Some text string",
+    "chars_help": "Basic characters used to compose ASCII art",
+    "output_help": "Path for generated file",
+    "height_help": "Output height (meaning depends on --height-mode)",
+    "width_help": "Output width, i.e., number of characters horizontally in the ASCII art",
+    "font_help": "Font used for displaying text",
+    "ratio_help": "Height multiplier for each character relative to its width",
+    "matrix_help": "Matrix size used for sampling",
+    "print_help": "Print output control (all: all; spec: specified, for external calls, default; no: no print output)",
+    "invert_help": "Invert image",
+    "debug_help": "Debug mode tag specification (comma-separated string, default empty)",
+    "text_align_help": "Multi-line text alignment (default: left)",
+    "line_spacing_help": "ASCII art line spacing (number of empty lines between visual blocks of input text lines, unit: ASCII art lines)",
+    "height_mode_help": "Height mode: line=height per ASCII art line (default), total=total height of entire ASCII art",
+    "font_reduce_help": "Font size reduction amount (default: {default}, unit: pixels)",
+    "font_style_help": "Font style (default: regular)",
+    "wide_char_ratio_help": "Wide character matching score weight ratio (default: {default})",
+    "interpolation_help": "Image resize interpolation algorithm (default: {default})",
+    "lang_help": "Language code (default: zh-CN)"
+  },
+  
+  "benchmark": {
+    "stage_image_load": "Image loading",
+    "stage_sampling": "Sampling array generation",
+    "stage_char_prep": "Character data preparation",
+    "stage_matching": "Character matching",
+    "stage_output": "Output generation",
+    "total_time": "Total time",
+    "peak_memory": "Peak memory",
+    "output_size": "Output size"
+  }
+}

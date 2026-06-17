@@ -1,0 +1,75 @@
+{
+  "meta": {
+    "language": "zh-CN",
+    "version": "1.0.0",
+    "last_updated": "2026-06-09"
+  },
+  
+  "error": {
+    "file_not_found": "图像文件不存在: {path}",
+    "cannot_read_image": "无法读取图像: {path}",
+    "unsupported_format": "不支持的格式: {format}",
+    "font_load_failed": "字体加载失败: {font_path}",
+    "invalid_parameter": "无效的参数: {param_name} = {value}",
+    "missing_required_param": "缺少必需参数: {param_name}",
+    "conflicting_params": "参数冲突: {param1} 和 {param2} 不能同时使用"
+  },
+  
+  "warning": {
+    "deprecated_feature": "警告: 功能 '{feature}' 已弃用，将在未来版本中移除",
+    "performance_slow": "警告: 当前配置可能导致性能较慢 (matrix={matrix}, interpolation={interpolation})",
+    "wide_char_fallback": "警告: 未找到合适的宽字符，使用占位符 '?'"
+  },
+  
+  "info": {
+    "processing_start": "开始处理...",
+    "processing_complete": "处理完成",
+    "saving_output": "正在保存输出到: {output_path}",
+    "benchmark_start": "开始性能基准测试...",
+    "benchmark_complete": "性能基准测试完成",
+    "visualization_start": "开始生成可视化报告...",
+    "visualization_complete": "可视化报告生成完成"
+  },
+  
+  "success": {
+    "file_saved": "文件已成功保存到: {path}",
+    "test_passed": "测试通过",
+    "installation_success": "安装成功"
+  },
+  
+  "cli": {
+    "help_description": "根据输入的文本或图片生成相应的字符画",
+    "config_help": "配置文件路径",
+    "image_help": "任何cv2支持的图像文件",
+    "text_help": "一些文本字符串",
+    "chars_help": "用来构成字符画的基本字符",
+    "output_help": "生成文件的路径",
+    "height_help": "输出高度 (含义取决于 --height-mode)",
+    "width_help": "输出宽度，即字符画横向对应的字符数",
+    "font_help": "用于显示的文本字体",
+    "ratio_help": "每个字符相对于其宽度的高度倍数",
+    "matrix_help": "用于采样的矩阵大小",
+    "print_help": "执行print输出控制 (all:全部；spec:指定，用于外部调用，为默认值；no:不执行print输出)",
+    "invert_help": "反转图像",
+    "debug_help": "调试模式下的标签指定(逗号分隔的字符串默认为空)",
+    "text_align_help": "多行文本对齐方式 (默认: left)",
+    "line_spacing_help": "字符画行间距 (对应输入文本行的视觉块之间的空行数,单位:字符画行数)",
+    "height_mode_help": "高度模式: line=每行字符画高度(默认), total=整体字符画总高度",
+    "font_reduce_help": "字体大小缩减量 (默认: {default}, 单位: 像素)",
+    "font_style_help": "字体样式 (默认: regular)",
+    "wide_char_ratio_help": "宽字符匹配得分权重比例 (默认: {default})",
+    "interpolation_help": "图像 resize 插值算法 (默认: {default})",
+    "lang_help": "语言代码 (默认: zh-CN)"
+  },
+  
+  "benchmark": {
+    "stage_image_load": "图像加载",
+    "stage_sampling": "采样数组生成",
+    "stage_char_prep": "字符数据准备",
+    "stage_matching": "字符匹配",
+    "stage_output": "输出生成",
+    "total_time": "总耗时",
+    "peak_memory": "内存峰值",
+    "output_size": "输出大小"
+  }
+}

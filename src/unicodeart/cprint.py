@@ -1,3 +1,4 @@
+import sys
 from . import global_vars
 
 def cprint(string, force_capture=0, debug_tags=""):    
@@ -16,10 +17,23 @@ def cprint(string, force_capture=0, debug_tags=""):
 
     # 🔶 如果全局变量global_capture为1，或全局变量global_capture不为-1且force_capture为1，则打印字符串
     if(global_vars.global_capture == 1 or (global_vars.global_capture != -1 and force_capture == 1)):
+        # 🟢 Windows 兼容性：确保使用 UTF-8 编码输出
+        if sys.platform == 'win32':
+            try:
+                # 尝试设置 stdout 为 UTF-8 编码
+                sys.stdout.reconfigure(encoding='utf-8')
+            except (AttributeError, IOError):
+                # Python < 3.7 或重定向时可能失败，使用 fallback
+                pass
         print(string)
     # 🔶 反之，如果全局变量global_capture为2且force_capture为2，则根据debug_tags进行打印
     elif(global_vars.global_capture == 2 and force_capture == 2):
         #如果debug_tags为空或者debug_tags(逗号拆分后的数组)包含的标签只要有一个在全局变量global_debug_tags中，则打印字符串
         if(debug_tags == "" or any(tag in debug_tags.split(",") for tag in global_vars.global_debug_tags)):
+            # 🟢 Windows 兼容性：确保使用 UTF-8 编码输出
+            if sys.platform == 'win32':
+                try:
+                    sys.stdout.reconfigure(encoding='utf-8')
+                except (AttributeError, IOError):
+                    pass
             print(string)
-        

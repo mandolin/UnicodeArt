@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import os
+import sys
 import cv2
 from . import unicodeart_util
 from . import global_vars
@@ -32,8 +33,36 @@ def console():
     返回值:
         无返回值，直接输出结果到控制台或文件
     """
+    # 🟢 Windows 兼容性：设置标准输出为 UTF-8 编码
+    if sys.platform == 'win32':
+        try:
+            sys.stdout.reconfigure(encoding='utf-8')
+            sys.stderr.reconfigure(encoding='utf-8')
+        except (AttributeError, IOError):
+            # Python < 3.7 或重定向时可能失败
+            pass
+    
     #region 🟦㈠ 定义参数解析器对象p并初始化
-    p=unicodeart_util.get_parser()
+    
+    """
+    两阶段参数解析策略：
+    1. 第一阶段：仅解析 --lang 参数以确定语言环境
+    2. 设置多语言支持
+    3. 第二阶段：重新创建完整的解析器（此时帮助文本已翻译）
+    """
+    
+    # 第一阶段：创建轻量级解析器仅获取 lang 参数
+    import configargparse
+    temp_parser = configargparse.ArgParser(add_help=False)
+    temp_parser.add_argument('--lang', choices=['zh-CN', 'en-US'], default='zh-CN')
+    temp_args, _ = temp_parser.parse_known_args()
+    
+    # 设置多语言支持
+    from .i18n import set_language
+    set_language(temp_args.lang)
+    
+    # 第二阶段：创建完整解析器（此时 _() 函数已切换到正确语言）
+    p = unicodeart_util.get_parser()
     #endregion
 
     #region 🟦㈡ 解析命令行参数
@@ -44,6 +73,12 @@ def console():
     同时处理参数类型转换和全局变量设置
     """
     args = p.parse_args()
+    
+    # 🟢 设置多语言支持
+    from .i18n import set_language
+    if hasattr(args, 'lang'):
+        set_language(args.lang)
+    
     #region 🔶① 定义一些后续将使用的参数变量并将args属性值赋给它们
     image_file_path           = args.image        # 图像文件路径
     text_string               = args.text         # 要转换的文本字符串
@@ -100,8 +135,10 @@ def console():
     # 如果指定了图像文件路径
     if image_file_path is not None:
         # 首先判断图像路径是否有效
+        from .i18n import _
+        
         if not os.path.exists(image_file_path):
-            cprint('err:图像未找到', 1)
+            cprint(_('error.file_not_found', path=image_file_path), 1)
             exit()
         
         # 使用cv2库读取图像（灰度图像）
@@ -109,18 +146,18 @@ def console():
             image_file = cv2.imread(f.name, 0)
         # 如果图像未找到，打印错误消息并退出程序
         if image_file is None:
-            cprint('err:无法读取图像', 1)
+            cprint(_('error.cannot_read_image', path=image_file_path), 1)
             exit()
     elif text_string is None:
-        cprint('err:图像参数和文本参数不能都为空，请使用 --image 或者 --text', 1)
+        cprint(_('error.missing_required_param', param_name='image or text'), 1)
         exit()
     else:
         # 如果未指定图像文件路径但指定了文本参数，则还必须提供字体和高度参数
         if art_font is None:
-            cprint('err:需要字体参数，请使用 --font', 1)
+            cprint(_('error.missing_required_param', param_name='font'), 1)
             exit()
         if height is None:
-            cprint('err:需要高度参数，请使用 --height', 1)
+            cprint(_('error.missing_required_param', param_name='height'), 1)
             exit()
 
     #endregion
@@ -158,7 +195,7 @@ def console():
     #endregion
 
     #region ㈤ 根据字符集参数准备好采样字符数组
-    #todo3 暂用art_font用作字符字体，后期增加单独字符字体参数
+    # note: art_font 同时用作渲染字体和显示字体，未来可增加单独字符字体参数
     actual_char_font = unicodeart_util.load_font_with_style(art_font, font_style)
     char_data, wide_char_data=unicodeart_util.get_char_data(chars, actual_char_font, matrix_size, vertical_horizontal_ratio, interpolation)
     #endregion

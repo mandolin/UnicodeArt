@@ -21,7 +21,7 @@ from .config import (
     WINDOWS_FONT_DIR,
 )
 
-#todo1 更新python官方仓库版本
+# note: 项目版本更新需同步至 Python 官方仓库（PyPI）
 
 #region 🟦 字体加载辅助函数
 
@@ -107,63 +107,75 @@ def get_parser():
         configargparse.ArgParser: 参数解析器对象
     
     """
+    from .i18n import _
+    
     # 创建参数解析器对象，设置默认配置文件路径
-    p = configargparse.ArgParser(config_file_open_func=lambda filename: open(
-                filename, "r+", encoding="utf-8"
-            ), default_config_files=['config.txt', '/etc/app/conf.d/*.conf', '~/.my_settings'], description='根据输入的文本或图片生成相应的字符画')
+    p = configargparse.ArgParser(
+        config_file_open_func=lambda filename: open(
+            filename, "r+", encoding="utf-8"
+        ), 
+        default_config_files=['config.txt', '/etc/app/conf.d/*.conf', '~/.my_settings'], 
+        description=_('cli.help_description')
+    )
 
-    # 添加参数，用于指定配置文件路径 #todo2 增加多语言说明机制
-    p.add('-c', '--config', is_config_file=True, help='配置文件路径')
+    # 添加参数，用于指定配置文件路径
+    p.add('-c', '--config', is_config_file=True, help=_('cli.config_help'))
 
     # 创建互斥组，确保只能选择一个输入方式
     input_group = p.add_mutually_exclusive_group(required=True)
-    input_group.add_argument('-i', '--image', help='任何cv2支持的图像文件')  # 这个选项可以在配置文件中设置，因为它以'--'开头
-    input_group.add_argument('-t', '--text',  help='一些文本字符串')
+    input_group.add_argument('-i', '--image', help=_('cli.image_help'))
+    input_group.add_argument('-t', '--text',  help=_('cli.text_help'))
 
     # 添加其它参数，用于指定字符、输出文件名等
-    p.add_argument('-a', '--chars',  help='用来构成字符画的基本字符')
-    p.add_argument('-o', '--output', help='生成文件的路径')
-    p.add_argument('-e', '--height', help='输出高度 (含义取决于 --height-mode)')
-    p.add_argument('-w', '--width',  help='输出宽度，即字符画横向对应的字符数')
-    p.add_argument('-f', '--font',   help='用于显示的文本字体')
+    p.add_argument('-a', '--chars',  help=_('cli.chars_help'))
+    p.add_argument('-o', '--output', help=_('cli.output_help'))
+    p.add_argument('-e', '--height', help=_('cli.height_help'))
+    p.add_argument('-w', '--width',  help=_('cli.width_help'))
+    p.add_argument('-f', '--font',   help=_('cli.font_help'))
     
     # 🔶🟢 多行文本支持参数
     p.add_argument('--text-align', choices=['left', 'center', 'right'], default='left',
-                   help='多行文本对齐方式 (默认: left)')
+                   help=_('cli.text_align_help'))
     p.add_argument('--line-spacing', type=int, default=0,
-                   help='字符画行间距 (对应输入文本行的视觉块之间的空行数,单位:字符画行数)')
+                   help=_('cli.line_spacing_help'))
     
     # 🔶🟢 高度模式参数
     p.add_argument('--height-mode', choices=['line', 'total'], default='line',
-                   help='高度模式: line=每行字符画高度(默认), total=整体字符画总高度')
+                   help=_('cli.height_mode_help'))
     
-    # 🔶🟢 字体缩减参数 (todo2 #4)
+    # 🔶🟢 字体缩减参数 (已实现)
     p.add_argument('--font-reduce', type=int, default=DEFAULT_FONT_REDUCE,
-                   help=f'字体大小缩减量 (默认: {DEFAULT_FONT_REDUCE}, 单位: 像素)')
+                   help=_('cli.font_reduce_help').format(default=DEFAULT_FONT_REDUCE))
     
-    # 🔶🟢 字体样式参数 (todo2 - 任务 1.2.3)
+    # 🔶🟢 字体样式参数 (已实现 - 任务 1.2.3)
     p.add_argument('--font-style', choices=['regular', 'bold', 'italic', 'bold-italic'], default='regular',
-                   help='字体样式 (默认: regular)')
+                   help=_('cli.font_style_help'))
     
-    # 🔶🟢 宽字符比例参数 (todo3 #13 - 任务 1.2.6)
+    # 🔶🟢 宽字符比例参数 (已实现 - 任务 1.2.6)
     p.add_argument('--wide-char-ratio', type=float, default=DEFAULT_WIDE_CHAR_RATIO,
-                   help=f'宽字符匹配得分权重比例 (默认: {DEFAULT_WIDE_CHAR_RATIO})')
+                   help=_('cli.wide_char_ratio_help').format(default=DEFAULT_WIDE_CHAR_RATIO))
     
-    # 🔶🟢 插值算法参数 (todo3 #7 - 任务 1.2.5)
+    # 🔶🟢 插值算法参数 (已实现 - 任务 1.2.5)
     p.add_argument('--interpolation', choices=['nearest', 'bilinear', 'bicubic', 'lanczos'], default=DEFAULT_INTERPOLATION,
-                   help=f'图像 resize 插值算法 (默认: {DEFAULT_INTERPOLATION})')
+                   help=_('cli.interpolation_help').format(default=DEFAULT_INTERPOLATION))
     
-    # todo3 增加字符字体
-    # todo2 增加字体类型（粗体、斜体等）
-    # todo3 增加"是否去除行尾空格"
-    # todo3 增加图像resize操作时的插值设定参数
+    # note: 以下功能待实现（低优先级）
+    # - 增加单独字符字体参数
+    # - 增加字体类型扩展（更多样式）
+    # - 增加"是否去除行尾空格"选项
+    # - 增加图像resize操作时的插值设定参数（已有 --interpolation）
     # ✅ 已实现多行文本支持
-    # todo3 增加裱框设置选项
-    p.add_argument('-r', '--ratio',  help='每个字符相对于其宽度的高度倍数', default='2.0')
-    p.add_argument('-v', '--invert', help='反转图像', action='store_true')
-    p.add_argument('-m', '--matrix', help='用于采样的矩阵大小', default='5')
-    p.add_argument('-p', '--print',  help='执行print(all:全部；spec:指定，用于外部调用，为默认值；no:不执行print输出)', default='spec')
-    p.add_argument('-d', '--debug',  help='调试模式下的标签指定(逗号分隔的字符串默认为空)', default='')
+    # - 增加裱框设置选项
+    
+    # 🔶🟢 多语言支持参数
+    p.add_argument('--lang', choices=['zh-CN', 'en-US'], default='zh-CN',
+                   help=_('cli.lang_help'))
+    
+    p.add_argument('-r', '--ratio',  help=_('cli.ratio_help'), default='2.0')
+    p.add_argument('-v', '--invert', help=_('cli.invert_help'), action='store_true')
+    p.add_argument('-m', '--matrix', help=_('cli.matrix_help'), default='6')
+    p.add_argument('-p', '--print',  help=_('cli.print_help'), default='spec')
+    p.add_argument('-d', '--debug',  help=_('cli.debug_help'), default='')
 
     return p
 #endregion
@@ -302,7 +314,7 @@ def get_baseimg(text_string, art_font, height, matrix_size, text_align='left', l
     
     # 🟢 创建一个新的灰度图像 (使用计算的总高度)
     baseimg = Image.new('L', (max_width, total_height_pixels), 255)
-    
+    #cprint(['total_height_pixels:', total_height_pixels],1)
     # 🟢 创建一个 ImageDraw 对象，用于在图像上绘制文本
     context = ImageDraw.Draw(baseimg)
     
@@ -340,7 +352,7 @@ def get_baseimg(text_string, art_font, height, matrix_size, text_align='left', l
     # 🟢 将图像转换为NumPy数组
     #baseimg.save('v1.png')
     baseimg = np.array(baseimg)
-    
+    #cprint(['baseimg',baseimg],1)
     return baseimg
 
 # 🔶 获取操作台基准图像宽度
@@ -363,6 +375,7 @@ def get_basewidth(position, text, font, spacing):
     for i, char in enumerate(text):
         # 获取字符实际宽度
         l,b, width, height=font.getbbox(text=char)
+        #cprint(['char:', char, 'width:', width],1)
         text_widths.append(width)
         # 添加间距持续获取文本基线宽度
         basewidth += width+spacing
@@ -548,7 +561,7 @@ def get_sampling_array(
     rectsize_h, rectsize_w = _calculate_block_size(
         source_height, source_width, height, width, vertical_horizontal_ratio
     )
-    
+    cprint(['rectsize_h, rectsize_w', rectsize_h, rectsize_w])
     #  计算输出维度
     output_height, output_width = _calculate_output_dimensions(
         source_height, source_width, rectsize_h, rectsize_w

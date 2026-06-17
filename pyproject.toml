@@ -4,20 +4,70 @@ build-backend = "hatchling.build"
 
 [project]
 name = "unicodeart"
-version = "0.0.5"
+version = "1.0.0"
 authors = [
   { name="mandolin2099", email="mandolin.mdy@gmail.com" },
 ]
-description = "unicode art tool"
+description = "Unicode ASCII art generator - Convert images and text to beautiful character art with wide character support"
 readme = "README.md"
-requires-python = ">=3.8"
+license = { text = "GPL-3.0-only" }
+requires-python = ">=3.7"
 classifiers = [
-    "Programming Language :: Python :: 3",
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: End Users/Desktop",
     "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
     "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Graphics",
+    "Topic :: Text Processing",
+    "Topic :: Utilities",
+]
+keywords = ["ascii-art", "unicode-art", "image-processing", "text-art", "character-art", "wide-character"]
+dependencies = [
+    "opencv_python>=4.2.0.34",
+    "numpy>=1.18.3",
+    "Pillow>=7.1.2",
+    "ConfigArgParse>=1.7",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=6.0",
+    "pytest-html>=3.0",
+    "black>=21.0",
+    "flake8>=3.9",
+]
+tools = [
+    "matplotlib>=3.3",
 ]
 
 [project.urls]
 Homepage = "https://github.com/mandolin/UnicodeArt"
+Documentation = "https://github.com/mandolin/UnicodeArt/tree/main/doc"
+Repository = "https://github.com/mandolin/UnicodeArt.git"
+Changelog = "https://github.com/mandolin/UnicodeArt/blob/main/CHANGELOG.md"
 Issues = "https://github.com/mandolin/UnicodeArt/issues"
 
+[project.scripts]
+unicodeart = "unicodeart.console:console"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/unicodeart"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src",
+    "/README.md",
+    "/README_EN.md",
+    "/doc",
+    "/tools",
+    "/tests",
+    "/requirements.txt",
+]
