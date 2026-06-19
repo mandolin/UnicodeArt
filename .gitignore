@@ -92,3 +92,4 @@ zero_*.py
 cleanup_*.py
 verify_*.py
 minimal_*.py
+/ai

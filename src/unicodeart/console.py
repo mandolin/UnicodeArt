@@ -167,6 +167,15 @@ def console():
     #region ㈢ 准备好操作台图像
     if image_file is not None:
         baseimg = image_file
+        source_height, source_width = baseimg.shape[:2]
+        #如果height不为空，则将图像进行比例缩放，高度为 int(height) * matrix_size，宽度从原图比例计算
+        if height is not None:
+            t_height = int(height) * matrix_size
+            t_width = int(source_width * (t_height / source_height))
+            baseimg = cv2.resize(baseimg, (t_width, t_height))
+        else:
+            height = source_height
+        height_mode = 'total'
     else:
         # 应用字体样式查找
         actual_font = unicodeart_util.load_font_with_style(art_font, font_style)
