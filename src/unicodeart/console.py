@@ -6,6 +6,7 @@ import cv2
 from . import unicodeart_util
 from . import global_vars
 from .cprint import cprint
+from .i18n import _ as t
 
 def console():
     """
@@ -55,7 +56,7 @@ def console():
     import configargparse
     temp_parser = configargparse.ArgParser(add_help=False)
     temp_parser.add_argument('--lang', choices=['zh-CN', 'en-US'], default='zh-CN')
-    temp_args, _ = temp_parser.parse_known_args()
+    temp_args, unknown_args = temp_parser.parse_known_args()
     
     # 设置多语言支持
     from .i18n import set_language
@@ -134,31 +135,29 @@ def console():
     image_file = None
     # 如果指定了图像文件路径
     if image_file_path is not None:
-        # 首先判断图像路径是否有效
-        from .i18n import _
-        
+        # 检查图像文件是否存在
         if not os.path.exists(image_file_path):
-            cprint(_('error.file_not_found', path=image_file_path), 1)
+            cprint(t('error.file_not_found', path=image_file_path), 1)
             exit()
-        
-        # 使用cv2库读取图像（灰度图像）
-        with open(image_file_path, 'rb') as f:
-            image_file = cv2.imread(f.name, 0)
-        # 如果图像未找到，打印错误消息并退出程序
-        if image_file is None:
-            cprint(_('error.cannot_read_image', path=image_file_path), 1)
+            
+        # 尝试读取图像
+        baseimg = cv2.imread(image_file_path)
+        if baseimg is None:
+            cprint(t('error.cannot_read_image', path=image_file_path), 1)
             exit()
-    elif text_string is None:
-        cprint(_('error.missing_required_param', param_name='image or text'), 1)
-        exit()
+    elif text_string is not None:
+        pass
     else:
-        # 如果未指定图像文件路径但指定了文本参数，则还必须提供字体和高度参数
-        if art_font is None:
-            cprint(_('error.missing_required_param', param_name='font'), 1)
-            exit()
-        if height is None:
-            cprint(_('error.missing_required_param', param_name='height'), 1)
-            exit()
+        cprint(t('error.missing_required_param', param_name='image or text'), 1)
+        exit()
+        
+    # 验证其他必需参数
+    if art_font is None:
+        cprint(t('error.missing_required_param', param_name='font'), 1)
+        exit()
+    if height is None:
+        cprint(t('error.missing_required_param', param_name='height'), 1)
+        exit()
 
     #endregion
 
